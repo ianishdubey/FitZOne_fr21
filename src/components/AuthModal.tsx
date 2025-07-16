@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, User, Eye, EyeOff, ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ type AuthMode = 'signin' | 'signup' | 'forgot';
 
 const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [mode, setMode] = useState<AuthMode>('signin');
+  const { login, register } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -120,18 +122,50 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
     setIsSubmitting(true);
     
-    // Simulate API call
-    setTimeout(() => {
+    const submitAuth = async () => {
+      try {
+        if (mode === 'signin') {
+          await login(formData.email, formData.password);
+        } else if (mode === 'signup') {
+          await register({
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            email: formData.email,
+            password: formData.password
+          });
+        }
+        
+        setIsSubmitting(false);
+        setSubmitSuccess(true);
+        
+        // Close modal after success
+        setTimeout(() => {
+          setSubmitSuccess(false);
+          resetForm();
+          onClose();
+        }, 2000);
+      } catch (error) {
+        setIsSubmitting(false);
+        const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
+        setErrors({ general: errorMessage });
+      }
+    };
+    
+    if (mode === 'forgot') {
+      // Handle forgot password (simulate for now)
+      setTimeout(() => {
       setIsSubmitting(false);
       setSubmitSuccess(true);
       
-      // Show success message for 2 seconds then close
       setTimeout(() => {
         setSubmitSuccess(false);
         resetForm();
         onClose();
       }, 2000);
-    }, 1500);
+      }, 1500);
+    } else {
+      submitAuth();
+    }
   };
 
   const resetForm = () => {
