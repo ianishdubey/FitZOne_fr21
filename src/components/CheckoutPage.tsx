@@ -2,10 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CreditCard, Smartphone, Building, MapPin, User, Mail, Phone, Lock, CheckCircle, AlertCircle, ShoppingBag } from 'lucide-react';
 import { useCartStore } from '../store/cartStore';
-import { loadStripe } from '@stripe/stripe-js';
-
-// Initialize Stripe (replace with your publishable key)
-const stripePromise = loadStripe('pk_test_51234567890abcdef...');
 
 const CheckoutPage = () => {
   const navigate = useNavigate();
@@ -14,6 +10,13 @@ const CheckoutPage = () => {
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'upi'>('card');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [paymentErrors, setPaymentErrors] = useState<Record<string, string>>({});
+  const [cardType, setCardType] = useState<string>('');
+  const [upiValidation, setUpiValidation] = useState<{
+    isValid: boolean;
+    message: string;
+    provider?: string;
+  }>({ isValid: false, message: '' });
 
   const [formData, setFormData] = useState({
     // Billing Information
@@ -41,6 +44,154 @@ const CheckoutPage = () => {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Card validation functions
+  const detectCardType = (cardNumber: string): string => {
+    const cleanNumber = cardNumber.replace(/\s/g, '');
+    
+    const cardPatterns = {
+      visa: /^4[0-9]{0,15}$/,
+      mastercard: /^5[1-5][0-9]{0,14}$/,
+      amex: /^3[47][0-9]{0,13}$/,
+      discover: /^6(?:011|5[0-9]{2})[0-9]{0,12}$/,
+      rupay: /^6[0-9]{0,15}$/,
+      maestro: /^(5018|5020|5038|6304|6759|6761|6763)[0-9]{0,15}$/
+    };
+
+    for (const [type, pattern] of Object.entries(cardPatterns)) {
+      if (pattern.test(cleanNumber)) {
+        return type;
+      }
+    }
+    return '';
+  };
+
+  const validateCardNumber = (cardNumber: string): boolean => {
+    const cleanNumber = cardNumber.replace(/\s/g, '');
+    
+    // Luhn algorithm for card validation
+    let sum = 0;
+    let isEven = false;
+    
+    for (let i = cleanNumber.length - 1; i >= 0; i--) {
+      let digit = parseInt(cleanNumber.charAt(i), 10);
+      
+      if (isEven) {
+        digit *= 2;
+        if (digit > 9) {
+          digit -= 9;
+        }
+      }
+      
+      sum += digit;
+      isEven = !isEven;
+    }
+    
+    return sum % 10 === 0 && cleanNumber.length >= 13 && cleanNumber.length <= 19;
+  };
+
+  const validateExpiryDate = (expiry: string): boolean => {
+    const match = expiry.match(/^(0[1-9]|1[0-2])\/([0-9]{2})$/);
+    if (!match) return false;
+    
+    const month = parseInt(match[1], 10);
+    const year = parseInt(match[2], 10) + 2000;
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1;
+    
+    if (year < currentYear || (year === currentYear && month < currentMonth)) {
+      return false;
+    }
+    
+    return true;
+  };
+
+  const validateCVV = (cvv: string, cardType: string): boolean => {
+    if (cardType === 'amex') {
+      return /^[0-9]{4}$/.test(cvv);
+    }
+    return /^[0-9]{3}$/.test(cvv);
+  };
+
+  // UPI validation functions
+  const validateUPI = (upiId: string): { isValid: boolean; message: string; provider?: string } => {
+    if (!upiId.trim()) {
+      return { isValid: false, message: 'UPI ID is required' };
+    }
+
+    // Basic UPI format validation
+    const upiRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+    if (!upiRegex.test(upiId)) {
+      return { 
+        isValid: false, 
+        message: 'Please enter a valid UPI ID (e.g., yourname@paytm)' 
+      };
+    }
+
+    const [username, provider] = upiId.split('@');
+    
+    // Username validation
+    if (username.length < 2) {
+      return { 
+        isValid: false, 
+        message: 'Username must be at least 2 characters long' 
+      };
+    }
+
+    // Provider validation and recognition
+    const upiProviders: Record<string, string> = {
+      'paytm': 'Paytm',
+      'phonepe': 'PhonePe',
+      'gpay': 'Google Pay',
+      'amazonpay': 'Amazon Pay',
+      'ybl': 'PhonePe',
+      'okaxis': 'Axis Bank',
+      'okhdfcbank': 'HDFC Bank',
+      'okicici': 'ICICI Bank',
+      'oksbi': 'State Bank of India',
+      'ibl': 'IDBI Bank',
+      'axl': 'Axis Bank',
+      'hdfcbank': 'HDFC Bank',
+      'icici': 'ICICI Bank',
+      'sbi': 'State Bank of India',
+      'pnb': 'Punjab National Bank',
+      'boi': 'Bank of India',
+      'cnrb': 'Canara Bank',
+      'upi': 'Generic UPI'
+    };
+
+    const providerName = upiProviders[provider.toLowerCase()] || 'Unknown Provider';
+    
+    if (!upiProviders[provider.toLowerCase()]) {
+      return { 
+        isValid: false, 
+        message: `"${provider}" is not a recognized UPI provider. Please check your UPI ID.`,
+        provider: providerName
+      };
+    }
+
+    return { 
+      isValid: true, 
+      message: `Valid ${providerName} UPI ID`,
+      provider: providerName
+    };
+  };
+
+  // Format card number with spaces
+  const formatCardNumber = (value: string): string => {
+    const cleanValue = value.replace(/\s/g, '');
+    const groups = cleanValue.match(/.{1,4}/g);
+    return groups ? groups.join(' ') : cleanValue;
+  };
+
+  // Format expiry date
+  const formatExpiryDate = (value: string): string => {
+    const cleanValue = value.replace(/\D/g, '');
+    if (cleanValue.length >= 2) {
+      return cleanValue.substring(0, 2) + '/' + cleanValue.substring(2, 4);
+    }
+    return cleanValue;
+  };
   // Redirect if cart is empty
   React.useEffect(() => {
     if (items.length === 0) {
@@ -50,13 +201,107 @@ const CheckoutPage = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    let formattedValue = value;
+    
+    // Handle card number formatting and validation
+    if (name === 'cardNumber') {
+      const cleanValue = value.replace(/\s/g, '');
+      if (cleanValue.length <= 19) {
+        formattedValue = formatCardNumber(cleanValue);
+        const detectedType = detectCardType(cleanValue);
+        setCardType(detectedType);
+        
+        // Real-time card validation
+        if (cleanValue.length >= 13) {
+          const isValid = validateCardNumber(cleanValue);
+          setPaymentErrors(prev => ({
+            ...prev,
+            cardNumber: isValid ? '' : 'Invalid card number'
+          }));
+        } else {
+          setPaymentErrors(prev => ({ ...prev, cardNumber: '' }));
+        }
+      } else {
+        return; // Don't update if too long
+      }
+    }
+    
+    // Handle expiry date formatting
+    if (name === 'expiryDate') {
+      const cleanValue = value.replace(/\D/g, '');
+      if (cleanValue.length <= 4) {
+        formattedValue = formatExpiryDate(cleanValue);
+        
+        // Real-time expiry validation
+        if (formattedValue.length === 5) {
+          const isValid = validateExpiryDate(formattedValue);
+          setPaymentErrors(prev => ({
+            ...prev,
+            expiryDate: isValid ? '' : 'Invalid or expired date'
+          }));
+        } else {
+          setPaymentErrors(prev => ({ ...prev, expiryDate: '' }));
+        }
+      } else {
+        return;
+      }
+    }
+    
+    // Handle CVV validation
+    if (name === 'cvv') {
+      const cleanValue = value.replace(/\D/g, '');
+      const maxLength = cardType === 'amex' ? 4 : 3;
+      if (cleanValue.length <= maxLength) {
+        formattedValue = cleanValue;
+        
+        // Real-time CVV validation
+        if (cleanValue.length === maxLength) {
+          const isValid = validateCVV(cleanValue, cardType);
+          setPaymentErrors(prev => ({
+            ...prev,
+            cvv: isValid ? '' : `Invalid CVV (${maxLength} digits required)`
+          }));
+        } else {
+          setPaymentErrors(prev => ({ ...prev, cvv: '' }));
+        }
+      } else {
+        return;
+      }
+    }
+    
+    // Handle UPI validation
+    if (name === 'upiId') {
+      formattedValue = value.toLowerCase().trim();
+      
+      // Real-time UPI validation
+      if (formattedValue.length > 0) {
+        const validation = validateUPI(formattedValue);
+        setUpiValidation(validation);
+        setPaymentErrors(prev => ({
+          ...prev,
+          upiId: validation.isValid ? '' : validation.message
+        }));
+      } else {
+        setUpiValidation({ isValid: false, message: '' });
+        setPaymentErrors(prev => ({ ...prev, upiId: '' }));
+      }
+    }
+    
+    setFormData(prev => ({ ...prev, [name]: formattedValue }));
+    
     // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
   };
 
+  // Clear payment errors when switching payment methods
+  React.useEffect(() => {
+    setPaymentErrors({});
+    setCardType('');
+    setUpiValidation({ isValid: false, message: '' });
+  }, [paymentMethod]);
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
@@ -96,21 +341,45 @@ const CheckoutPage = () => {
 
     // Payment method specific validation
     if (paymentMethod === 'card') {
+      // Enhanced card validation
       if (!formData.cardName.trim()) {
         newErrors.cardName = 'Cardholder name is required';
+      } else if (!/^[a-zA-Z\s]+$/.test(formData.cardName.trim())) {
+        newErrors.cardName = 'Cardholder name can only contain letters';
+      } else if (formData.cardName.trim().length < 2) {
+        newErrors.cardName = 'Cardholder name must be at least 2 characters';
       }
+      
       if (!formData.cardNumber.trim()) {
         newErrors.cardNumber = 'Card number is required';
+      } else {
+        const cleanCardNumber = formData.cardNumber.replace(/\s/g, '');
+        if (!validateCardNumber(cleanCardNumber)) {
+          newErrors.cardNumber = 'Please enter a valid card number';
+        }
       }
+      
       if (!formData.expiryDate.trim()) {
         newErrors.expiryDate = 'Expiry date is required';
+      } else if (!validateExpiryDate(formData.expiryDate)) {
+        newErrors.expiryDate = 'Please enter a valid expiry date (MM/YY)';
       }
+      
       if (!formData.cvv.trim()) {
         newErrors.cvv = 'CVV is required';
+      } else if (!validateCVV(formData.cvv, cardType)) {
+        const expectedLength = cardType === 'amex' ? 4 : 3;
+        newErrors.cvv = `CVV must be ${expectedLength} digits`;
       }
     } else if (paymentMethod === 'upi') {
+      // Enhanced UPI validation
       if (!formData.upiId.trim()) {
         newErrors.upiId = 'UPI ID is required';
+      } else {
+        const validation = validateUPI(formData.upiId);
+        if (!validation.isValid) {
+          newErrors.upiId = validation.message;
+        }
       }
     }
 
@@ -283,27 +552,58 @@ const CheckoutPage = () => {
                         name="cardName"
                         value={formData.cardName}
                         onChange={handleInputChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-colors ${
+                          paymentErrors.cardName ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                        }`}
                         placeholder="John Doe"
                         required
                       />
+                      {paymentErrors.cardName && (
+                        <p className="mt-1 text-sm text-red-600">{paymentErrors.cardName}</p>
+                      )}
                       {errors.cardName && <p className="mt-1 text-sm text-red-600">{errors.cardName}</p>}
                     </div>
                     
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Card Number
+                        Card Number {cardType && (
+                          <span className="text-xs text-blue-600 capitalize">({cardType})</span>
+                        )}
                       </label>
-                      <input
-                        type="text"
-                        name="cardNumber"
-                        value={formData.cardNumber}
-                        onChange={handleInputChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                        placeholder="1234 5678 9012 3456"
-                        maxLength={19}
-                        required
-                      />
+                      <div className="relative">
+                        <input
+                          type="text"
+                          name="cardNumber"
+                          value={formData.cardNumber}
+                          onChange={handleInputChange}
+                          className={`w-full px-4 py-3 pr-12 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-colors ${
+                            paymentErrors.cardNumber ? 'border-red-500 bg-red-50' : 
+                            formData.cardNumber && !paymentErrors.cardNumber && formData.cardNumber.replace(/\s/g, '').length >= 13 ? 'border-green-500 bg-green-50' : 
+                            'border-gray-300'
+                          }`}
+                          placeholder="1234 5678 9012 3456"
+                          required
+                        />
+                        {cardType && (
+                          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                            <div className={`w-8 h-5 rounded text-xs flex items-center justify-center text-white font-bold ${
+                              cardType === 'visa' ? 'bg-blue-600' :
+                              cardType === 'mastercard' ? 'bg-red-600' :
+                              cardType === 'amex' ? 'bg-green-600' :
+                              cardType === 'rupay' ? 'bg-orange-600' :
+                              'bg-gray-600'
+                            }`}>
+                              {cardType.substring(0, 4).toUpperCase()}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {paymentErrors.cardNumber && (
+                        <p className="mt-1 text-sm text-red-600">{paymentErrors.cardNumber}</p>
+                      )}
+                      {formData.cardNumber && !paymentErrors.cardNumber && formData.cardNumber.replace(/\s/g, '').length >= 13 && (
+                        <p className="mt-1 text-sm text-green-600">✓ Valid card number</p>
+                      )}
                       {errors.cardNumber && <p className="mt-1 text-sm text-red-600">{errors.cardNumber}</p>}
                     </div>
                     
@@ -317,29 +617,58 @@ const CheckoutPage = () => {
                           name="expiryDate"
                           value={formData.expiryDate}
                           onChange={handleInputChange}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                          className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-colors ${
+                            paymentErrors.expiryDate ? 'border-red-500 bg-red-50' : 
+                            formData.expiryDate.length === 5 && !paymentErrors.expiryDate ? 'border-green-500 bg-green-50' : 
+                            'border-gray-300'
+                          }`}
                           placeholder="MM/YY"
-                          maxLength={5}
                           required
                         />
+                        {paymentErrors.expiryDate && (
+                          <p className="mt-1 text-sm text-red-600">{paymentErrors.expiryDate}</p>
+                        )}
+                        {formData.expiryDate.length === 5 && !paymentErrors.expiryDate && (
+                          <p className="mt-1 text-sm text-green-600">✓ Valid expiry date</p>
+                        )}
                         {errors.expiryDate && <p className="mt-1 text-sm text-red-600">{errors.expiryDate}</p>}
                       </div>
                       
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          CVV
+                          CVV {cardType === 'amex' && <span className="text-xs text-gray-500">(4 digits)</span>}
                         </label>
                         <input
                           type="text"
                           name="cvv"
                           value={formData.cvv}
                           onChange={handleInputChange}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                          placeholder="123"
-                          maxLength={4}
+                          className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-colors ${
+                            paymentErrors.cvv ? 'border-red-500 bg-red-50' : 
+                            formData.cvv && !paymentErrors.cvv ? 'border-green-500 bg-green-50' : 
+                            'border-gray-300'
+                          }`}
+                          placeholder={cardType === 'amex' ? '1234' : '123'}
                           required
                         />
+                        {paymentErrors.cvv && (
+                          <p className="mt-1 text-sm text-red-600">{paymentErrors.cvv}</p>
+                        )}
+                        {formData.cvv && !paymentErrors.cvv && (
+                          <p className="mt-1 text-sm text-green-600">✓ Valid CVV</p>
+                        )}
                         {errors.cvv && <p className="mt-1 text-sm text-red-600">{errors.cvv}</p>}
+                      </div>
+                    </div>
+                    
+                    {/* Card Security Info */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <div className="flex items-start space-x-2">
+                        <Lock className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                        <div className="text-sm text-blue-700">
+                          <p className="font-medium mb-1">Your card information is secure</p>
+                          <p>We use industry-standard encryption to protect your payment details. Your card information is never stored on our servers.</p>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -347,20 +676,100 @@ const CheckoutPage = () => {
 
                 {/* UPI Payment Form */}
                 {paymentMethod === 'upi' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      UPI ID
-                    </label>
-                    <input
-                      type="text"
-                      name="upiId"
-                      value={formData.upiId}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      placeholder="yourname@paytm"
-                      required
-                    />
-                    {errors.upiId && <p className="mt-1 text-sm text-red-600">{errors.upiId}</p>}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        UPI ID {upiValidation.provider && (
+                          <span className="text-xs text-blue-600">({upiValidation.provider})</span>
+                        )}
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          name="upiId"
+                          value={formData.upiId}
+                          onChange={handleInputChange}
+                          className={`w-full px-4 py-3 pr-12 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-colors ${
+                            paymentErrors.upiId ? 'border-red-500 bg-red-50' : 
+                            upiValidation.isValid ? 'border-green-500 bg-green-50' : 
+                            'border-gray-300'
+                          }`}
+                          placeholder="yourname@paytm"
+                          required
+                        />
+                        {upiValidation.isValid && (
+                          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                            <CheckCircle className="w-5 h-5 text-green-500" />
+                          </div>
+                        )}
+                        {paymentErrors.upiId && (
+                          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                            <AlertCircle className="w-5 h-5 text-red-500" />
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* UPI Validation Messages */}
+                      {paymentErrors.upiId && (
+                        <p className="mt-1 text-sm text-red-600">{paymentErrors.upiId}</p>
+                      )}
+                      {upiValidation.isValid && (
+                        <p className="mt-1 text-sm text-green-600">✓ {upiValidation.message}</p>
+                      )}
+                      
+                      {/* UPI Help Text */}
+                      <div className="mt-2 text-xs text-gray-500">
+                        <p>Enter your UPI ID in the format: username@provider</p>
+                        <p className="mt-1">Supported providers: Paytm, PhonePe, Google Pay, Amazon Pay, and all major banks</p>
+                      </div>
+                    </div>
+                    
+                    {/* Popular UPI Providers */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-3">Popular UPI Providers:</h4>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                          <span>@paytm - Paytm</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                          <span>@ybl - PhonePe</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          <span>@gpay - Google Pay</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                          <span>@amazonpay - Amazon Pay</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                          <span>@hdfcbank - HDFC Bank</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                          <span>@sbi - State Bank of India</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* UPI Security Info */}
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <div className="flex items-start space-x-2">
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                        <div className="text-sm text-green-700">
+                          <p className="font-medium mb-1">UPI Payment Benefits</p>
+                          <ul className="text-xs space-y-1">
+                            <li>• Instant payment processing</li>
+                            <li>• No additional charges</li>
+                            <li>• Secure bank-grade encryption</li>
+                            <li>• 24/7 availability</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
