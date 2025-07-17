@@ -7,6 +7,8 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "seed": "node scripts/seed.js",
+    "build": "echo 'No build step required for Node.js'",
+    "deploy": "npm install --production",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": ["fitness", "gym", "api", "nodejs", "express"],

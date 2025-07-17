@@ -8,10 +8,17 @@
     "dev:full": "concurrently \"npm run server\" \"npm run dev\"",
     "server": "cd server && npm run dev",
     "build": "vite build",
+    "build:server": "cd server && npm install --production",
     "lint": "eslint .",
     "preview": "vite preview",
     "postinstall": "cd server && npm install",
-    "seed": "cd server && node scripts/seed.js"
+    "seed": "cd server && node scripts/seed.js",
+    "deploy:netlify": "npm run build && netlify deploy --prod --dir=dist",
+    "deploy:vercel": "npm run build && vercel --prod",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
   },
   "dependencies": {
     "@stripe/stripe-js": "^7.4.0",
