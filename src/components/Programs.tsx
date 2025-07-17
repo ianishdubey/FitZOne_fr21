@@ -86,7 +86,7 @@ const Programs = () => {
     addItem({
       id: program.id,
       name: program.title,
-      price: 1875, // Base price in rupees
+      price: program.price || 1875,
       type: 'program',
       image: program.image,
       duration: program.duration,

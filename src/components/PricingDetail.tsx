@@ -320,7 +320,17 @@ const PricingDetail = () => {
               </div>
 
               <button 
-                onClick={() => navigate(`/purchase/plan-${planId}`)}
+                onClick={() => {
+                  // Add to cart instead of direct purchase
+                  const prices: { [key: string]: number } = {
+                    'basic': 2199,
+                    'premium': 4499,
+                    'elite': 7499
+                  };
+                  
+                  // You can implement addToCart here or navigate to purchase
+                  navigate(`/purchase/plan-${planId}`);
+                }}
                 className={`w-full py-3 rounded-xl font-bold transition-all duration-300 transform hover:scale-105 shadow-lg bg-gradient-to-r ${plan.gradient} text-white hover:shadow-xl mb-4`}
               >
                 <span className="flex items-center justify-center space-x-2">

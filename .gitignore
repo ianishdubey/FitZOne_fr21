@@ -22,4 +22,24 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment variables
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Server specific
+server/.env
+server/node_modules
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Database
+*.db
+*.sqlite
+
+# OS generated files
+Thumbs.db
+.DS_Store

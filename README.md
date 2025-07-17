@@ -52,7 +52,7 @@ A comprehensive fitness website with full-stack functionality including user aut
 
 ### 1. Clone the Repository
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/yourusername/fitzone-website.git
 cd fitzone-website
 ```
 
@@ -74,6 +74,8 @@ cd ..
 VITE_API_URL=http://localhost:5000/api
 VITE_OPENAI_API_KEY=your_openai_api_key
 VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_key
+VITE_APP_NAME=FitZone
+VITE_APP_VERSION=1.0.0
 ```
 
 #### Backend (server/.env)
@@ -82,17 +84,29 @@ NODE_ENV=development
 PORT=5000
 FRONTEND_URL=http://localhost:5173
 MONGODB_URI=mongodb://localhost:27017/fitzone
-JWT_SECRET=your_super_secret_jwt_key
+JWT_SECRET=your_super_secret_jwt_key_here_make_it_long_and_random_12345
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
+SMTP_FROM=noreply@fitzone.com
 STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key
+STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
 OPENAI_API_KEY=your_openai_api_key
+MAX_FILE_SIZE=10485760
+UPLOAD_PATH=./uploads
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+SESSION_SECRET=your_session_secret_here
 ```
 
 ### 4. Database Setup
 Make sure MongoDB is running locally or provide a cloud MongoDB URI in the environment variables.
+
+#### Seed the Database (Optional)
+```bash
+npm run seed
+```
 
 ### 5. Start the Application
 
@@ -104,7 +118,7 @@ npm run dev:full
 #### Or start separately:
 ```bash
 # Terminal 1 - Backend
-npm run server
+cd server && npm run dev
 
 # Terminal 2 - Frontend
 npm run dev
